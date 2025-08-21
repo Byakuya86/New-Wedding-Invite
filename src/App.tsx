@@ -14,15 +14,7 @@ import { createPortal } from "react-dom";
 const COIN_PER_GAME = 25;
 const SEAT_PRICE = 25;
 
-function useInterval(callback: () => void, delay: number | null) {
-  const saved = React.useRef(callback);
-  React.useEffect(() => { saved.current = callback; }, [callback]);
-  React.useEffect(() => {
-    if (delay == null) return;
-    const id = setInterval(() => saved.current(), delay);
-    return () => clearInterval(id);
-  }, [delay]);
-}
+// useInterval removed — it was declared but never used.
 
 
 function PageDimmer({ show, opacity = 0.25 }: { show: boolean; opacity?: number }) {
