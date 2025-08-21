@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper validators
+    function isShortString(v, max) {
+      return v is string && v.size() > 0 && v.size() <= max;
+    }
+    function isEmail(v) {
+      return v is string && v.size() <= 200;
+    }
+
+    // RSVP submissions (no auth required, but validated)
+    match /rsvps/{rsvpId} {
+      allow create: if
+        // Only accept creates (no edits/deletes)
+        request.method == 'create' &&
+
+        // Accept until Dec 31, 2026 (adjust for your event)
+        request.time < timestamp.date(2026, 12, 31) &&
+
+        // Basic shape checks
+        isShortString(request.resource.data.name, 120) &&
+        isEmail(request.resource.data.email) &&
+        request.resource.data.phone is string &&
+        request.resource.data.dietary is string &&
+        request.resource.data.message is string &&
+        request.resource.data.song is string &&
+
+        request.resource.data.guests is int &&
+        request.resource.data.guests >= 1 &&
+        request.resource.data.guests <= 6 &&
+
+        request.resource.data.coins is int &&
+        request.resource.data.coins >= 0 &&
+
+        request.resource.data.paymentMethod in ['hotel_counter','eft'] &&
+        isShortString(request.resource.data.refCode, 40);
+
+      // Optional: let you read RSVPs from the console app only; otherwise keep false
+      allow read: if false;
+      allow update, delete: if false;
+    }
+
+    // Guests lookup by code (if you’re prefilling)
+    match /guests/{code} {
+      // If these are public invite links, reads can be open:
+      allow read: if true;
+
+      // No client-side writes to guest profiles
+      allow create, update, delete: if false;
+    }
+  }
+}

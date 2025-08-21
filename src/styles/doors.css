@@ -1,0 +1,84 @@
+/* Full-bleed hero with background (replace with your image path) */
+.church-hero {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  background: url("/images/church-bg.jpg") center/cover no-repeat;
+  overflow: hidden;
+}
+
+/* Doors container */
+#church-doors {
+  position: absolute;
+  inset: 0;
+  perspective: 1200px; /* enables 3D rotateY depth */
+}
+
+/* Door base */
+.door {
+  position: absolute;
+  top: 0;
+  width: 50%;
+  height: 100%;
+  background: #6b4a2f; /* wood tone */
+  box-shadow: inset 0 0 80px rgba(0,0,0,0.35);
+  transform-origin: center left;
+  transform: rotateY(0deg);
+  transition: transform 1.8s ease-in-out;
+  backface-visibility: hidden;
+}
+
+/* Left door specifics */
+.left-door {
+  left: 0;
+  transform-origin: left center;
+}
+
+/* Right door specifics */
+.right-door {
+  right: 0;
+  transform-origin: right center;
+}
+
+/* When opened */
+#church-doors.open .left-door {
+  transform: rotateY(-100deg);
+}
+
+#church-doors.open .right-door {
+  transform: rotateY(100deg);
+}
+
+/* Subtle seam line between doors before open */
+.left-door::after, .right-door::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  background: rgba(0,0,0,0.3);
+}
+.left-door::after { right: 0; }
+.right-door::after { left: 0; }
+
+/* Optional title overlay */
+.hero-title {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0,0,0,0.7);
+  padding: 2rem;
+}
+.hero-title h1 {
+  font-size: clamp(2rem, 6vw, 4rem);
+  margin: 0 0 0.5rem;
+  letter-spacing: 0.04em;
+}
+.hero-title p {
+  font-size: clamp(1rem, 2.5vw, 1.25rem);
+  margin: 0;
+  opacity: 0.95;
+}
