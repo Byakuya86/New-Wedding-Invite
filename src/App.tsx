@@ -41,8 +41,29 @@ type Screen =
   | "songAndPay"
   | "done";
 
+  export default function App() {
+  const LOCKED = true; // set to false when you're ready to go live
 
-export default function InvitationApp() {
+  if (LOCKED) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-100">
+        <h1 className="text-2xl font-bold text-gray-700">
+          Our wedding invite is coming soon 💍✨
+        </h1>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Your actual wedding invite app goes here */}
+    </div>
+  );
+}
+
+
+
+export function InvitationApp() {
   const [screen, setScreen] = useState<Screen>("door");
   const [coins, setCoins] = useState<number>(() => {
     const saved = localStorage.getItem("invitation_coins");
@@ -1362,3 +1383,6 @@ function Done() {
 }
 
 console.log("FB project:", import.meta.env.VITE_FB_PROJECT_ID);
+
+// InvitationApp is exported as the default above; the duplicate App() default export has been removed.
+
