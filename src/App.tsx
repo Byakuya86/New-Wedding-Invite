@@ -41,8 +41,8 @@ type Screen =
   | "songAndPay"
   | "done";
 
-  export default function App() {
-  const LOCKED = true; // set to false when you're ready to go live
+  export function App() {
+  const LOCKED = false; // set to false when you're ready to go live
 
   if (LOCKED) {
     return (
@@ -63,7 +63,7 @@ type Screen =
 
 
 
-export function InvitationApp() {
+export default function InvitationApp() {
   const [screen, setScreen] = useState<Screen>("door");
   const [coins, setCoins] = useState<number>(() => {
     const saved = localStorage.getItem("invitation_coins");
@@ -85,13 +85,13 @@ export function InvitationApp() {
 
    useEffect(() => {
   const params = new URLSearchParams(window.location.search);
-  const urlCode = params.get("g");
+  const urlCode = params.get("code") || params.get("g");  // NEW: prefer ?code=
   const stored = localStorage.getItem("guest_code");
 
   if (urlCode && urlCode !== stored) {
     localStorage.setItem("guest_code", urlCode);
     setGuestCode(urlCode);
-  } else if (stored && !urlCode) {
+  } else if (!urlCode && stored) {
     setGuestCode(stored);
   } else if (urlCode) {
     setGuestCode(urlCode);
@@ -102,42 +102,35 @@ export function InvitationApp() {
 useEffect(() => {
   async function loadGuest() {
     if (!guestCode) return;
+    try {
+      const snap = await getDoc(doc(db, "guests", guestCode));
+      if (!snap.exists()) return;
 
-    const snap = await getDoc(doc(db, "guests", guestCode));
-    if (!snap.exists()) return;
+      const g = snap.data() as {
+        name?: string;
+        email?: string;
+        seatsAllocated?: number;
+        dietaryDefault?: string;
+        messageDefault?: string;
+      };
 
-    const g = snap.data() as {
-      name?: string;
-      email?: string;
-      seatsAllocated?: number;
-      dietaryDefault?: string;
-      messageDefault?: string;
-    };
-    setGuestProfile(g);
+      // Prefill only if blanks (trimmed)
+      const get = (k: string) => (localStorage.getItem(k) || "").trim();
+      if (!get("rsvp_name") && g.name) localStorage.setItem("rsvp_name", g.name);
+      if (!get("rsvp_email") && g.email) localStorage.setItem("rsvp_email", g.email);
+      if (!get("rsvp_dietary") && g.dietaryDefault) localStorage.setItem("rsvp_dietary", g.dietaryDefault);
+      if (!get("rsvp_message") && g.messageDefault) localStorage.setItem("rsvp_message", g.messageDefault);
+      if (!get("rsvp_guests") && Number.isFinite(g.seatsAllocated)) {
+        localStorage.setItem("rsvp_guests", String(g.seatsAllocated));
+        setGuestCount(Math.max(1, Math.min(6, Number(g.seatsAllocated))));
+      }
 
-
-    // Helper: read trimmed
-    const get = (k: string) => (localStorage.getItem(k) || "").trim();
-
-    if (!get("rsvp_name") && g.name) {
-      localStorage.setItem("rsvp_name", g.name);
+      // (optional) banner state if you show one
+      setGuestProfile?.(g);
+      setPrefillVersion?.((v: number) => v + 1);
+    } catch (e) {
+      console.warn("Could not load guest profile", e);
     }
-    if (!get("rsvp_email") && g.email) {
-      localStorage.setItem("rsvp_email", g.email);
-    }
-    if (!get("rsvp_dietary") && g.dietaryDefault) {
-      localStorage.setItem("rsvp_dietary", g.dietaryDefault);
-    }
-    if (!get("rsvp_message") && g.messageDefault) {
-      localStorage.setItem("rsvp_message", g.messageDefault);
-    }
-    if (!get("rsvp_guests") && Number.isFinite(g.seatsAllocated)) {
-      localStorage.setItem("rsvp_guests", String(g.seatsAllocated));
-      setGuestCount(Math.max(1, Math.min(6, Number(g.seatsAllocated))));
-    }
-
-    // Force dependent screens to re-read
-    setPrefillVersion((v) => v + 1);
   }
   loadGuest();
 }, [guestCode]);
