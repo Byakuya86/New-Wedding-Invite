@@ -1,11 +1,10 @@
+// Version: v1.1 (2025-08-22) — adds hosted/comped guest handling on Details page
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { collection, addDoc, serverTimestamp, getDoc, doc } from "firebase/firestore";
 import { db } from "./lib/firebase";
 import { createPortal } from "react-dom";
 //import ChurchDoors from "./components/ChurchDoors";
-
-
-
 
 // Interactive Digital Wedding Invitation
 // Single-file React component (use Tailwind CSS). No external assets required.
@@ -41,28 +40,6 @@ type Screen =
   | "songAndPay"
   | "done";
 
-  export function App() {
-  const LOCKED = false; // set to false when you're ready to go live
-
-  if (LOCKED) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-gray-100">
-        <h1 className="text-2xl font-bold text-gray-700">
-          Our wedding invite is coming soon 💍✨
-        </h1>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      {/* Your actual wedding invite app goes here */}
-    </div>
-  );
-}
-
-
-
 export default function InvitationApp() {
   const [screen, setScreen] = useState<Screen>("door");
   const [coins, setCoins] = useState<number>(() => {
@@ -73,9 +50,6 @@ export default function InvitationApp() {
   const [jackpotOpen, setJackpotOpen] = useState(false);
   const [prefillVersion, setPrefillVersion] = useState(0);
   const dimmed = !["door", "game1", "game2"].includes(screen) && !jackpotOpen;
-  
-
-
 
   useEffect(() => {
     localStorage.setItem("invitation_coins", String(coins));
@@ -83,26 +57,37 @@ export default function InvitationApp() {
 
   const [guestCode, setGuestCode] = useState<string | null>(null);
 
-   useEffect(() => {
-  const params = new URLSearchParams(window.location.search);
-  const urlCode = params.get("code") || params.get("g");  // NEW: prefer ?code=
-  const stored = localStorage.getItem("guest_code");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlCode = params.get("g");
+    const stored = localStorage.getItem("guest_code");
 
-  if (urlCode && urlCode !== stored) {
-    localStorage.setItem("guest_code", urlCode);
-    setGuestCode(urlCode);
-  } else if (!urlCode && stored) {
-    setGuestCode(stored);
-  } else if (urlCode) {
-    setGuestCode(urlCode);
-  }
-}, []);
+    if (urlCode && urlCode !== stored) {
+      localStorage.setItem("guest_code", urlCode);
+      setGuestCode(urlCode);
+    } else if (stored && !urlCode) {
+      setGuestCode(stored);
+    } else if (urlCode) {
+      setGuestCode(urlCode);
+    }
+  }, []);
 
-// Fetch guests/{code} and prefill localStorage + guestCount
-useEffect(() => {
-  async function loadGuest() {
-    if (!guestCode) return;
-    try {
+  // Guest profile shape (extended with hosted flags)
+  const [guestProfile, setGuestProfile] = useState<{
+    name?: string;
+    email?: string;
+    seatsAllocated?: number;
+    dietaryDefault?: string;
+    messageDefault?: string;
+    compedNights?: number; // number of nights covered (e.g., 1)
+    hostedStay?: boolean;  // or simple boolean
+  } | null>(null);
+
+  // Fetch guests/{code} and prefill localStorage + guestCount
+  useEffect(() => {
+    async function loadGuest() {
+      if (!guestCode) return;
+
       const snap = await getDoc(doc(db, "guests", guestCode));
       if (!snap.exists()) return;
 
@@ -112,56 +97,52 @@ useEffect(() => {
         seatsAllocated?: number;
         dietaryDefault?: string;
         messageDefault?: string;
+        compedNights?: number;
+        hostedStay?: boolean;
       };
+      setGuestProfile(g);
 
-      // Prefill only if blanks (trimmed)
+      // Helper: read trimmed
       const get = (k: string) => (localStorage.getItem(k) || "").trim();
-      if (!get("rsvp_name") && g.name) localStorage.setItem("rsvp_name", g.name);
-      if (!get("rsvp_email") && g.email) localStorage.setItem("rsvp_email", g.email);
-      if (!get("rsvp_dietary") && g.dietaryDefault) localStorage.setItem("rsvp_dietary", g.dietaryDefault);
-      if (!get("rsvp_message") && g.messageDefault) localStorage.setItem("rsvp_message", g.messageDefault);
+
+      if (!get("rsvp_name") && g.name) {
+        localStorage.setItem("rsvp_name", g.name);
+      }
+      if (!get("rsvp_email") && g.email) {
+        localStorage.setItem("rsvp_email", g.email);
+      }
+      if (!get("rsvp_dietary") && g.dietaryDefault) {
+        localStorage.setItem("rsvp_dietary", g.dietaryDefault);
+      }
+      if (!get("rsvp_message") && g.messageDefault) {
+        localStorage.setItem("rsvp_message", g.messageDefault);
+      }
       if (!get("rsvp_guests") && Number.isFinite(g.seatsAllocated)) {
         localStorage.setItem("rsvp_guests", String(g.seatsAllocated));
         setGuestCount(Math.max(1, Math.min(6, Number(g.seatsAllocated))));
       }
 
-      // (optional) banner state if you show one
-      setGuestProfile?.(g);
-      setPrefillVersion?.((v: number) => v + 1);
-    } catch (e) {
-      console.warn("Could not load guest profile", e);
+      // Force dependent screens to re-read
+      setPrefillVersion((v) => v + 1);
     }
-  }
-  loadGuest();
-}, [guestCode]);
+    loadGuest();
+  }, [guestCode]);
 
-const [guestProfile, setGuestProfile] = useState<{
-  name?: string;
-  email?: string;
-  seatsAllocated?: number;
-  dietaryDefault?: string;
-  messageDefault?: string;
-} | null>(null);
-
-  
-
-  
   return (
-  <div
-    className="
-      relative min-h-screen w-full text-slate-800
-      bg-[radial-gradient(1200px_600px_at_-10%_-10%,#ffe4e6_0%,transparent_60%),radial-gradient(1000px_500px_at_110%_-10%,#fff1c1_0%,transparent_60%),radial-gradient(1200px_600px_at_50%_120%,#e0f2fe_0%,transparent_60%)]
-    "
-  >
-  
-    {/* Global dimmer via portal */}
-    <PageDimmer show={dimmed} opacity={0.28} />
-    {screen === "door" ? (
-      <DoorFullScreen onEnter={() => setScreen("details")} />
-    ) : (
-      <div className="min-h-screen w-full flex items-center justify-center p-4">
-        <div className="w-full max-w-4xl">
-          <Header coins={coins} guestCode={guestCode} />
+    <div
+      className="
+        relative min-h-screen w-full text-slate-800
+        bg-[radial-gradient(1200px_600px_at_-10%_-10%,#ffe4e6_0%,transparent_60%),radial-gradient(1000px_500px_at_110%_-10%,#fff1c1_0%,transparent_60%),radial-gradient(1200px_600px_at_50%_120%,#e0f2fe_0%,transparent_60%)]
+      "
+    >
+      {/* Global dimmer via portal */}
+      <PageDimmer show={dimmed} opacity={0.28} />
+      {screen === "door" ? (
+        <DoorFullScreen onEnter={() => setScreen("details")} />
+      ) : (
+        <div className="min-h-screen w-full flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl">
+            <Header coins={coins} guestCode={guestCode} />
             {guestCode && guestProfile && (
               <div className="px-6 mt-3 mb-1 text-center text-slate-800 text-sm">
                 <span className="font-medium">
@@ -175,51 +156,58 @@ const [guestProfile, setGuestProfile] = useState<{
               </div>
             )}
 
-        {screen === "details" && <Details onNext={() => setScreen("game1")} onOpenJackpot={() => setJackpotOpen(true)} />}
-        {screen === "game1" && (
-          <PetalClickGame
-            onWin={() => {setCoins((c) => c + COIN_PER_GAME);setScreen("game2");
-            }}
-            onGiveUp={() => setScreen("game2")}
-          />
-        )}
-        {screen === "game2" && (
-          <ReactionGame
-            onWin={() => {
-              setCoins(c => c + COIN_PER_GAME);
-              setScreen("seats");
-            }}
-            onSkip={() => setScreen("seats")}
-          />
-        )}
-        {screen === "seats" && (
-          <SeatPurchase
-            coins={coins}
-            guestCount={guestCount}
-            setGuestCount={setGuestCount}
-            onNeedCoins={() => setJackpotOpen(true)}
-            onPurchased={(spent) => {
-              // Persist selected guests for later saving
-              localStorage.setItem("rsvp_guests", String(guestCount));
-              setCoins((c) => c - spent);
-              setScreen("guestInfo");
-            }}
-            maxGuests={guestProfile?.seatsAllocated ?? 6}
-          />
-        )}
-        {screen === "guestInfo" && (
-          <GuestInfo prefillVersion={prefillVersion}
-            onNext={() => setScreen("songAndPay")}
-            onBack={() => setScreen("seats")}
-          />
-        )}
-        {screen === "songAndPay" && (
-          <SongAndPayment onFinish={() => setScreen("done")} />
-        )}
-        {screen === "done" && <Done />}
+            {screen === "details" && (
+              <Details
+                hosted={!!(guestProfile?.compedNights || guestProfile?.hostedStay)}
+                onNext={() => setScreen("game1")}
+                onOpenJackpot={() => setJackpotOpen(true)}
+              />
+            )}
+            {screen === "game1" && (
+              <PetalClickGame
+                onWin={() => {
+                  setCoins((c) => c + COIN_PER_GAME);
+                  setScreen("game2");
+                }}
+                onGiveUp={() => setScreen("game2")}
+              />
+            )}
+            {screen === "game2" && (
+              <ReactionGame
+                onWin={() => {
+                  setCoins((c) => c + COIN_PER_GAME);
+                  setScreen("seats");
+                }}
+                onSkip={() => setScreen("seats")}
+              />
+            )}
+            {screen === "seats" && (
+              <SeatPurchase
+                coins={coins}
+                guestCount={guestCount}
+                setGuestCount={setGuestCount}
+                onNeedCoins={() => setJackpotOpen(true)}
+                onPurchased={(spent) => {
+                  // Persist selected guests for later saving
+                  localStorage.setItem("rsvp_guests", String(guestCount));
+                  setCoins((c) => c - spent);
+                  setScreen("guestInfo");
+                }}
+                maxGuests={guestProfile?.seatsAllocated ?? 6}
+              />
+            )}
+            {screen === "guestInfo" && (
+              <GuestInfo
+                prefillVersion={prefillVersion}
+                onNext={() => setScreen("songAndPay")}
+                onBack={() => setScreen("seats")}
+              />
+            )}
+            {screen === "songAndPay" && <SongAndPayment onFinish={() => setScreen("done")} />}
+            {screen === "done" && <Done />}
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
       {jackpotOpen && (
         <JackpotModal
@@ -231,7 +219,7 @@ const [guestProfile, setGuestProfile] = useState<{
           }}
         />
       )}
-  </div>
+    </div>
   );
 }
 
@@ -270,13 +258,16 @@ function Header({ coins, guestCode }: { coins: number; guestCode?: string | null
 function DoorFullScreen({ onEnter }: { onEnter: () => void }) {
   const [open, setOpen] = useState(false);
   const IMAGE_SRC = "/images/doors-bg.jpg";
-  const LEFT_DOOR_IMG  = "/images/wood-door-left.png";
+  const LEFT_DOOR_IMG = "/images/wood-door-left.png";
   const RIGHT_DOOR_IMG = "/images/wood-door-right.png";
 
   useEffect(() => {
     const t1 = setTimeout(() => setOpen(true), 180);
     const t2 = setTimeout(() => onEnter(), 4000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [onEnter]);
 
   // Full viewport
@@ -309,8 +300,8 @@ function DoorFullScreen({ onEnter }: { onEnter: () => void }) {
     inset: 0,
     width: "100%",
     height: "100%",
-    objectFit: "contain",          // <-- key change (fit, no crop)
-    objectPosition: "center",      // tweak e.g. "50% 30%" to shift focus
+    objectFit: "contain", // <-- key change (fit, no crop)
+    objectPosition: "center", // tweak e.g. "50% 30%" to shift focus
     zIndex: 1,
     pointerEvents: "none",
   };
@@ -325,83 +316,79 @@ function DoorFullScreen({ onEnter }: { onEnter: () => void }) {
   };
 
   // --- Door styling (wood + shading, rounded top) ---
-const doorBase: React.CSSProperties = {
-  position: "absolute",
-  top: 0,
-  height: "100%",
-  width: "50%",
-  // gradient shading on top of optional wood
-  backgroundImage:
-    "linear-gradient(135deg, rgba(0,0,0,.15), rgba(0,0,0,.35)), url('/images/wood-door.png')",
-  backgroundSize: "cover, cover",
-  backgroundPosition: "center, center",
-  boxShadow: "inset 0 0 80px rgba(0,0,0,.35)",
-  transition: "transform 3s ease-in-out",
-  willChange: "transform",
-  zIndex: 3,
-  borderTopLeftRadius: 22,
-  borderTopRightRadius: 22,
-};
+  const doorBase: React.CSSProperties = {
+    position: "absolute",
+    top: 0,
+    height: "100%",
+    width: "50%",
+    // gradient shading on top of optional wood
+    backgroundImage:
+      "linear-gradient(135deg, rgba(0,0,0,.15), rgba(0,0,0,.35)), url('/images/wood-door.png')",
+    backgroundSize: "cover, cover",
+    backgroundPosition: "center, center",
+    boxShadow: "inset 0 0 80px rgba(0,0,0,.35)",
+    transition: "transform 3s ease-in-out",
+    willChange: "transform",
+    zIndex: 3,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+  };
 
-const leftDoor: React.CSSProperties = {
-  ...doorBase,
-  left: 0,
-  transform: open ? "translateX(-100%)" : "translateX(0)",
-  borderRight: "4px solid #2f1a0f",
-  backgroundImage:
-    `linear-gradient(135deg, rgba(0,0,0,.15), rgba(0,0,0,.35)), url('${LEFT_DOOR_IMG}')`,
-  backgroundSize: "cover, cover",
-  backgroundPosition: "center, center",
-};
+  const leftDoor: React.CSSProperties = {
+    ...doorBase,
+    left: 0,
+    transform: open ? "translateX(-100%)" : "translateX(0)",
+    borderRight: "4px solid #2f1a0f",
+    backgroundImage:
+      `linear-gradient(135deg, rgba(0,0,0,.15), rgba(0,0,0,.35)), url('${LEFT_DOOR_IMG}')`,
+    backgroundSize: "cover, cover",
+    backgroundPosition: "center, center",
+  };
 
-const rightDoor: React.CSSProperties = {
-  ...doorBase,
-  right: 0,
-  transform: open ? "translateX(100%)" : "translateX(0)",
-  borderLeft: "4px solid #2f1a0f",
-  backgroundImage:
-    `linear-gradient(135deg, rgba(0,0,0,.15), rgba(0,0,0,.35)), url('${RIGHT_DOOR_IMG}')`,
-  backgroundSize: "cover, cover",
-  backgroundPosition: "center, center",
-};
+  const rightDoor: React.CSSProperties = {
+    ...doorBase,
+    right: 0,
+    transform: open ? "translateX(100%)" : "translateX(0)",
+    borderLeft: "4px solid #2f1a0f",
+    backgroundImage:
+      `linear-gradient(135deg, rgba(0,0,0,.15), rgba(0,0,0,.35)), url('${RIGHT_DOOR_IMG}')`,
+    backgroundSize: "cover, cover",
+    backgroundPosition: "center, center",
+  };
 
-// decorative elements
+  // decorative elements
 
-// gold handle + key plate
-const handleBase: React.CSSProperties = {
-  position: "absolute",
-  top: "50%",
-  width: 14,
-  height: 56,
-  borderRadius: 9,
-  background:
-    "linear-gradient(180deg,#f7e39f,#ccab4d 50%,#f7e39f)",
-  boxShadow:
-    "0 1px 3px rgba(0,0,0,.5), inset 0 0 2px rgba(255,255,255,.8)",
-  transform: "translateY(-50%)",
-};
+  // gold handle + key plate
+  const handleBase: React.CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    width: 14,
+    height: 56,
+    borderRadius: 9,
+    background: "linear-gradient(180deg,#f7e39f,#ccab4d 50%,#f7e39f)",
+    boxShadow: "0 1px 3px rgba(0,0,0,.5), inset 0 0 2px rgba(255,255,255,.8)",
+    transform: "translateY(-50%)",
+  };
 
-const keyDot: React.CSSProperties = {
-  position: "absolute",
-  top: "calc(50% + 38px)",
-  width: 8,
-  height: 8,
-  borderRadius: 8,
-  background:
-    "radial-gradient(circle at 30% 30%, #fff, #d4b258 60%, #9c7b2c)",
-  boxShadow: "0 0 2px rgba(0,0,0,.6)",
-};
+  const keyDot: React.CSSProperties = {
+    position: "absolute",
+    top: "calc(50% + 38px)",
+    width: 8,
+    height: 8,
+    borderRadius: 8,
+    background: "radial-gradient(circle at 30% 30%, #fff, #d4b258 60%, #9c7b2c)",
+    boxShadow: "0 0 2px rgba(0,0,0,.6)",
+  };
 
-// hinges (decorative)
-const hinge: React.CSSProperties = {
-  position: "absolute",
-  width: 10,
-  height: 26,
-  borderRadius: 3,
-  background:
-    "linear-gradient(180deg,#e8d79a,#c6a544,#e8d79a)",
-  boxShadow: "0 1px 2px rgba(0,0,0,.6)",
-};
+  // hinges (decorative)
+  const hinge: React.CSSProperties = {
+    position: "absolute",
+    width: 10,
+    height: 26,
+    borderRadius: 3,
+    background: "linear-gradient(180deg,#e8d79a,#c6a544,#e8d79a)",
+    boxShadow: "0 1px 2px rgba(0,0,0,.6)",
+  };
 
   // Top-center headings
   const headingWrap: React.CSSProperties = {
@@ -424,24 +411,24 @@ const hinge: React.CSSProperties = {
       <div style={tint} />
 
       {/* LEFT DOOR */}
-<div style={leftDoor}>
-  {/* handle + key */}
-  <div style={{ ...handleBase, right: 18 }} />
-  <div style={{ ...keyDot, right: 24 }} />
-  {/* hinges */}
-  <div style={{ ...hinge, left: -5, top: "20%" }} />
-  <div style={{ ...hinge, left: -5, top: "48%" }} />
-  <div style={{ ...hinge, left: -5, top: "76%" }} />
-</div>
+      <div style={leftDoor}>
+        {/* handle + key */}
+        <div style={{ ...handleBase, right: 18 }} />
+        <div style={{ ...keyDot, right: 24 }} />
+        {/* hinges */}
+        <div style={{ ...hinge, left: -5, top: "20%" }} />
+        <div style={{ ...hinge, left: -5, top: "48%" }} />
+        <div style={{ ...hinge, left: -5, top: "76%" }} />
+      </div>
 
-{/* RIGHT DOOR */}
-<div style={rightDoor}>
-  <div style={{ ...handleBase, left: 18 }} />
-  <div style={{ ...keyDot, left: 24 }} />
-  <div style={{ ...hinge, right: -5, top: "20%" }} />
-  <div style={{ ...hinge, right: -5, top: "48%" }} />
-  <div style={{ ...hinge, right: -5, top: "76%" }} />
-</div>
+      {/* RIGHT DOOR */}
+      <div style={rightDoor}>
+        <div style={{ ...handleBase, left: 18 }} />
+        <div style={{ ...keyDot, left: 24 }} />
+        <div style={{ ...hinge, right: -5, top: "20%" }} />
+        <div style={{ ...hinge, right: -5, top: "48%" }} />
+        <div style={{ ...hinge, right: -5, top: "76%" }} />
+      </div>
 
       <div style={headingWrap}>
         <h2 className="text-2xl md:text-4xl font-semibold">Welcome to our celebration</h2>
@@ -451,9 +438,7 @@ const hinge: React.CSSProperties = {
   );
 }
 
-
-
-function Details({ onNext }: { onNext: () => void; onOpenJackpot?: () => void }) {
+function Details({ onNext, hosted = false }: { onNext: () => void; onOpenJackpot?: () => void; hosted?: boolean }) {
   return (
     <div className="px-6 py-10 text-center">
       <h2 className="text-3xl font-bold">You're invited!</h2>
@@ -461,17 +446,33 @@ function Details({ onNext }: { onNext: () => void; onOpenJackpot?: () => void })
         Please read the details below, then play two quick games to collect coins and reserve your seat.
       </p>
 
-      {/* Centered column */}
-      <div className="mt-8 max-w-2xl mx-auto space-y-8">
-        <section>
-          <h3 className="text-xl font-semibold">Weekend Happenings</h3>
+// --- Inside the Details section rendering ---
+// Centered column
+<div className="mt-8 max-w-2xl mx-auto space-y-8">
+  <section>
+    <h3 className="text-xl font-semibold">Weekend Happenings</h3>
           <ul className="mt-3 list-disc list-inside leading-7 space-y-1">
             <li><b>Reception:</b> Saturday night at Houw Hoek</li>
-            <li><b>Hotel Booking:</b> One night stay at own cost</li>
+            {hosted ? (
+              <li>
+                <b>Hotel Booking:</b> <span className="text-emerald-700 font-semibold">One night’s stay on us!</span>
+              </li>
+            ) : (
+              <li>
+                <b>Hotel Booking:</b> One night stay at own cost
+              </li>
+            )}
+            {/* Only show payment + further details for non-hosted guests */}
+            {!hosted && (
+              <>
+                <li><b>Payment Details:</b> Payment can be made via EFT or at the reception counter on the day; unfortunately no refunds.</li>
+                <li><b>Further details</b> will be provided at the end of the reservation.</li>
+              </>
+            )}
             <li>
               <b>Check-In:</b> 3 pm <span className="mx-1">|</span> <b>Check-Out:</b> 11 am next day
             </li>
-            <li><b>Food &amp; Drinks:</b> Food provided, drinks TBC</li>
+            <li><b>Food &amp; Drinks:</b> Food provided and Open Bar</li>
             <li><b>Additional Activities:</b> Optional, at own cost</li>
           </ul>
         </section>
@@ -510,10 +511,10 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 // Game 1: Click floating petals to reach target before time ends
 function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () => void }) {
   // ---- Settings ----
-  const TARGET = 30;            // you set this higher
-  const DURATION = 30000;       // ms
-  const PETAL_COUNT = 10;       // concurrent petals
-  const SPEED = 2.0;            // increase if you want faster fall (e.g., 1.5 or 2)
+  const TARGET = 30; // you set this higher
+  const DURATION = 30000; // ms
+  const PETAL_COUNT = 10; // concurrent petals
+  const SPEED = 2.0; // increase if you want faster fall (e.g., 1.5 or 2)
 
   // ---- State ----
   const startRef = useRef<number>(Date.now());
@@ -524,14 +525,20 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
   caughtRef.current = caught;
 
   type Petal = {
-    id: number; x: number; y: number; r: number; vx: number; vy: number;
-    alive: boolean; pop: number;
+    id: number;
+    x: number;
+    y: number;
+    r: number;
+    vx: number;
+    vy: number;
+    alive: boolean;
+    pop: number;
   };
 
   const makePetalFromTop = (id: number): Petal => ({
     id,
     x: Math.random() * 0.88 + 0.06, // 6%..94%
-    y: -0.08,                       // just above the top
+    y: -0.08, // just above the top
     r: Math.random() * 360,
     vx: (Math.random() - 0.5) * 0.018,
     vy: (0.012 + Math.random() * 0.015) * SPEED,
@@ -539,8 +546,8 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
     pop: 0,
   });
 
-  const [petals, setPetals] = useState<Petal[]>(
-    () => Array.from({ length: PETAL_COUNT }, (_, i) => makePetalFromTop(i + 1))
+  const [petals, setPetals] = useState<Petal[]>(() =>
+    Array.from({ length: PETAL_COUNT }, (_, i) => makePetalFromTop(i + 1))
   );
 
   // ---- Animation loop ----
@@ -548,8 +555,8 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
     const moveId = setInterval(() => {
       // if time has ended, do nothing
       if (ended) return;
-      setPetals(prev =>
-        prev.map(p => {
+      setPetals((prev) =>
+        prev.map((p) => {
           if (!p.alive) {
             // pop-out animation, then RESPAWN at the top
             const npop = Math.min(1, p.pop + 0.2);
@@ -583,10 +590,10 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
   }, [caught, onWin]);
 
   function catchPetal(id: number) {
-    setPetals(prev =>
-      prev.map(p => (p.id === id && p.alive ? { ...p, alive: false, pop: 0 } : p))
+    setPetals((prev) =>
+      prev.map((p) => (p.id === id && p.alive ? { ...p, alive: false, pop: 0 } : p))
     );
-    setCaught(c => c + 1);
+    setCaught((c) => c + 1);
   }
 
   // ---- UI ----
@@ -603,7 +610,8 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
   const petalChip: React.CSSProperties = {
     display: "grid",
     placeItems: "center",
-    width: 80, height: 80,
+    width: 80,
+    height: 80,
     background: "#fff",
     borderRadius: 999,
     boxShadow: "0 10px 20px rgba(0,0,0,.15), 0 0 0 2px rgba(244,63,94,.6)",
@@ -612,17 +620,24 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
   return (
     <div style={wrapStyle}>
       <h2 className="text-xl font-semibold">Game 1 · Catch the petals 🌸</h2>
-      <p className="text-slate-600 text-sm">Click {TARGET} petals before the timer runs out to earn 25 coins.</p>
+      <p className="text-slate-600 text-sm">
+        Click {TARGET} petals before the timer runs out to earn 25 coins.
+      </p>
 
       <div className="flex items-center gap-3 mt-3 text-sm">
-        <span className="px-3 py-1 rounded-full bg-emerald-100 border">Caught: <b>{caught}</b>/{TARGET}</span>
-        <span className="px-3 py-1 rounded-full bg-sky-100 border">Time: <b>{Math.ceil(timeLeft / 1000)}s</b></span>
+        <span className="px-3 py-1 rounded-full bg-emerald-100 border">
+          Caught: <b>{caught}</b>/{TARGET}
+        </span>
+        <span className="px-3 py-1 rounded-full bg-sky-100 border">
+          Time: <b>{Math.ceil(timeLeft / 1000)}s</b>
+        </span>
       </div>
 
       {/* PLAY AREA */}
       <div style={boxStyle}>
-        {petals.map(p => {
-          const left = p.x * 100, top = p.y * 100;
+        {petals.map((p) => {
+          const left = p.x * 100,
+            top = p.y * 100;
           const scale = p.pop ? 1 + p.pop * 0.5 : 1;
           const opacity = p.pop ? 1 - p.pop : 1;
           return (
@@ -637,7 +652,9 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
                 top: `${top}%`,
                 transform: `translate(-50%,-50%) rotate(${p.r}deg) scale(${scale})`,
                 opacity,
-                transition: p.alive ? "none" : "transform 220ms ease, opacity 220ms ease",
+                transition: p.alive
+                  ? "none"
+                  : "transform 220ms ease, opacity 220ms ease",
                 zIndex: 10001,
                 cursor: p.alive ? "pointer" : "default",
               }}
@@ -651,7 +668,9 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <button className="px-4 py-2 rounded-lg border" onClick={onGiveUp}>Skip</button>
+        <button className="px-4 py-2 rounded-lg border" onClick={onGiveUp}>
+          Skip
+        </button>
         <button
           className="px-4 py-2 rounded-lg bg-rose-600 text-white disabled:opacity-50"
           onClick={() => caught >= TARGET && onWin()}
@@ -664,14 +683,13 @@ function PetalClickGame({ onWin, onGiveUp }: { onWin: () => void; onGiveUp: () =
   );
 }
 
-
 // Game 2: Reaction timing — stop pointer inside target zone
 function ReactionGame({ onWin, onSkip }: { onWin: () => void; onSkip: () => void }) {
   // ---- Tuning ----
-  const SPEED = 4;              // % per tick
-  const TICK  = 16;             // ms
-  const TARGET_START = 55;      // %
-  const TARGET_END   = 65;      // %
+  const SPEED = 4; // % per tick
+  const TICK = 16; // ms
+  const TARGET_START = 55; // %
+  const TARGET_END = 65; // %
   const MAX_ATTEMPTS = 3;
 
   // ---- State/refs ----
@@ -683,16 +701,24 @@ function ReactionGame({ onWin, onSkip }: { onWin: () => void; onSkip: () => void
 
   const dirRef = useRef(1);
   const runRef = useRef(true);
-  useEffect(() => { runRef.current = running; }, [running]);
+  useEffect(() => {
+    runRef.current = running;
+  }, [running]);
 
   // Movement loop
   useEffect(() => {
     const id = setInterval(() => {
       if (!runRef.current || locked) return;
-      setPos(prev => {
+      setPos((prev) => {
         let np = prev + dirRef.current * SPEED;
-        if (np >= 100) { np = 100; dirRef.current = -1; }
-        if (np <= 0)   { np = 0;   dirRef.current =  1; }
+        if (np >= 100) {
+          np = 100;
+          dirRef.current = -1;
+        }
+        if (np <= 0) {
+          np = 0;
+          dirRef.current = 1;
+        }
         return np;
       });
     }, TICK);
@@ -718,7 +744,7 @@ function ReactionGame({ onWin, onSkip }: { onWin: () => void; onSkip: () => void
   }
 
   function reset() {
-    if (locked) return;       // no more resets when out of attempts
+    if (locked) return; // no more resets when out of attempts
     setHit(null);
     setRunning(true);
     runRef.current = true;
@@ -728,27 +754,54 @@ function ReactionGame({ onWin, onSkip }: { onWin: () => void; onSkip: () => void
 
   // Styles
   const wrap: React.CSSProperties = { position: "relative", zIndex: 10000, padding: 24 };
-  const box: React.CSSProperties  = {
-    position: "relative", height: 170, marginTop: 16, borderRadius: 16, overflow: "hidden",
-    background: "linear-gradient(180deg,#ffffff,#f8fafc)", outline: "1px solid rgba(148,163,184,.35)",
-    boxShadow: "inset 0 6px 18px rgba(0,0,0,.08)"
+  const box: React.CSSProperties = {
+    position: "relative",
+    height: 170,
+    marginTop: 16,
+    borderRadius: 16,
+    overflow: "hidden",
+    background: "linear-gradient(180deg,#ffffff,#f8fafc)",
+    outline: "1px solid rgba(148,163,184,.35)",
+    boxShadow: "inset 0 6px 18px rgba(0,0,0,.08)",
   };
   const lane: React.CSSProperties = { position: "absolute", left: 16, right: 16, top: 0, bottom: 0 };
   const track: React.CSSProperties = {
-    position: "absolute", left: 0, right: 0, top: "50%", height: 8, transform: "translateY(-50%)",
-    background: "#e5e7eb", borderRadius: 999
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: "50%",
+    height: 8,
+    transform: "translateY(-50%)",
+    background: "#e5e7eb",
+    borderRadius: 999,
   };
   const target: React.CSSProperties = {
-    position: "absolute", top: "50%", height: 22, transform: "translateY(-50%)",
-    left: `${TARGET_START}%`, width: `${TARGET_END - TARGET_START}%`,
-    background: "rgba(16,185,129,.20)", border: "1px solid rgba(16,185,129,.45)", borderRadius: 8
+    position: "absolute",
+    top: "50%",
+    height: 22,
+    transform: "translateY(-50%)",
+    left: `${TARGET_START}%`,
+    width: `${TARGET_END - TARGET_START}%`,
+    background: "rgba(16,185,129,.20)",
+    border: "1px solid rgba(16,185,129,.45)",
+    borderRadius: 8,
   };
   const marker: React.CSSProperties = {
-    position: "absolute", top: "50%", left: `${pos}%`, transform: "translate(-50%,-50%)",
-    width: 20, height: 20, borderRadius: 999,
+    position: "absolute",
+    top: "50%",
+    left: `${pos}%`,
+    transform: "translate(-50%,-50%)",
+    width: 20,
+    height: 20,
+    borderRadius: 999,
     background: "#f43f5e",
     boxShadow: "0 0 0 3px rgba(244,63,94,.35), 0 8px 14px rgba(0,0,0,.25)",
-    outline: hit == null ? "none" : hit ? "3px solid rgba(16,185,129,.65)" : "3px solid rgba(244,63,94,.65)"
+    outline:
+      hit == null
+        ? "none"
+        : hit
+        ? "3px solid rgba(16,185,129,.65)"
+        : "3px solid rgba(244,63,94,.65)",
   };
 
   return (
@@ -771,7 +824,9 @@ function ReactionGame({ onWin, onSkip }: { onWin: () => void; onSkip: () => void
       </div>
 
       <div className="mt-4 flex gap-3 justify-end">
-        <button className="px-4 py-2 rounded-lg border" onClick={onSkip}>Skip</button>
+        <button className="px-4 py-2 rounded-lg border" onClick={onSkip}>
+          Skip
+        </button>
         <button className="px-4 py-2 rounded-lg border" onClick={reset} disabled={locked}>
           Reset
         </button>
@@ -842,8 +897,12 @@ function SeatPurchase({
           )}
 
           <div className="mt-4 text-sm space-y-5">
-            <div>Total cost: <b>{totalCost}</b> coins</div>
-            <div>Balance after purchase: <b>{coins - totalCost}</b></div>
+            <div>
+              Total cost: <b>{totalCost}</b> coins
+            </div>
+            <div>
+              Balance after purchase: <b>{coins - totalCost}</b>
+            </div>
           </div>
         </section>
 
@@ -885,7 +944,6 @@ function SeatPurchase({
   );
 }
 
-
 function JackpotModal({
   needed,
   onClose,
@@ -896,8 +954,8 @@ function JackpotModal({
   onJackpot: (amount: number) => void;
 }) {
   // --- knobs ---
-  const SPIN_MS = 1200;     // total spin duration
-  const TICK_MS = 80;       // reel update speed
+  const SPIN_MS = 1200; // total spin duration
+  const TICK_MS = 80; // reel update speed
   const award = Math.max(needed, 25);
 
   // --- state/refs ---
@@ -922,7 +980,7 @@ function JackpotModal({
     window.addEventListener("keydown", onKey);
 
     // spin
-    const symbols = ["💍","💒","💖","🎉","🥂","🌹","🎁"];
+    const symbols = ["💍", "💒", "💖", "🎉", "🥂", "🌹", "🎁"];
     setSpinning(true);
 
     const spinId = setInterval(() => {
@@ -935,7 +993,7 @@ function JackpotModal({
 
     const stopId = setTimeout(() => {
       clearInterval(spinId);
-      setResult(["💍", "💍", "💍"]);
+      setResult(["🎉", "🎉", "🎉"]);
       setSpinning(false);
       spinningRef.current = false; // now Enter can claim
     }, SPIN_MS);
@@ -1020,7 +1078,9 @@ function JackpotModal({
         </div>
 
         <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end", gap: 12 }}>
-          <button onClick={onClose} className="px-4 py-2 rounded-lg border">Close</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border">
+            Close
+          </button>
           {!spinning && (
             <button
               onClick={() => onJackpot(award)}
@@ -1050,10 +1110,13 @@ function GuestInfo({ prefillVersion, onNext, onBack }: { prefillVersion: number;
   useEffect(() => {
     setForm((prev) => ({
       primaryName: prev.primaryName || localStorage.getItem("rsvp_name") || "",
-      email:       prev.email       || localStorage.getItem("rsvp_email") || "",
-      phone:       prev.phone       || localStorage.getItem("rsvp_phone") || "",
-      dietary:     (prev.dietary && prev.dietary !== "None") ? prev.dietary : (localStorage.getItem("rsvp_dietary") || "None"),
-      message:     prev.message     || localStorage.getItem("rsvp_message") || "",
+      email: prev.email || localStorage.getItem("rsvp_email") || "",
+      phone: prev.phone || localStorage.getItem("rsvp_phone") || "",
+      dietary:
+        prev.dietary && prev.dietary !== "None"
+          ? prev.dietary
+          : localStorage.getItem("rsvp_dietary") || "None",
+      message: prev.message || localStorage.getItem("rsvp_message") || "",
     }));
   }, [prefillVersion]);
 
@@ -1069,7 +1132,9 @@ function GuestInfo({ prefillVersion, onNext, onBack }: { prefillVersion: number;
   return (
     <div className="p-6">
       <h2 className="text-xl font-semibold">Guest details 📝</h2>
-      <p className="text-slate-600 text-sm">Tell us who’s coming. You can add additional names in the message box.</p>
+      <p className="text-slate-600 text-sm">
+        Tell us who’s coming. You can add additional names in the message box.
+      </p>
 
       <div className="mt-4 grid md:grid-cols-2 gap-4">
         <div className="space-y-3">
@@ -1123,12 +1188,16 @@ function GuestInfo({ prefillVersion, onNext, onBack }: { prefillVersion: number;
       </div>
 
       <div className="mt-5 flex items-center justify-between">
-        <button onClick={onBack} className="px-4 py-2 rounded-lg border">Back</button>
+        <button onClick={onBack} className="px-4 py-2 rounded-lg border">
+          Back
+        </button>
         <button
           onClick={handleNext}
           disabled={!form.primaryName || !form.email}
           className={`px-6 py-2 rounded-xl text-white shadow ${
-            !form.primaryName || !form.email ? "bg-slate-300" : "bg-rose-600 hover:brightness-110"
+            !form.primaryName || !form.email
+              ? "bg-slate-300"
+              : "bg-rose-600 hover:brightness-110"
           }`}
         >
           Continue
@@ -1144,7 +1213,9 @@ function SongAndPayment({ onFinish }: { onFinish: () => void }) {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"eft" | "hotel_counter">("hotel_counter");
+  const [paymentMethod, setPaymentMethod] = useState<"eft" | "hotel_counter">(
+    "hotel_counter"
+  );
 
   // Bank details stay (EFT option)
   const bank = useMemo(
@@ -1163,10 +1234,15 @@ function SongAndPayment({ onFinish }: { onFinish: () => void }) {
     if (fromUrl) return fromUrl.toUpperCase();
 
     const rawName = (localStorage.getItem("rsvp_name") || "").trim();
-    const rawPhone = (localStorage.getItem("rsvp_phone") || "");
+    const rawPhone = localStorage.getItem("rsvp_phone") || "";
 
     const initials = rawName
-      ? rawName.split(/\s+/).map((s) => s[0]).join("").slice(0, 3).toUpperCase()
+      ? rawName
+          .split(/\s+/)
+          .map((s) => s[0])
+          .join("")
+          .slice(0, 3)
+          .toUpperCase()
       : "GUEST";
 
     const digits = (rawPhone.match(/\d/g) || []).join("");
@@ -1175,8 +1251,7 @@ function SongAndPayment({ onFinish }: { onFinish: () => void }) {
   }, []);
 
   function copyEftDetails() {
-    const txt =
-`Account Name: ${bank.accountName}
+    const txt = `Account Name: ${bank.accountName}
 Bank: ${bank.bank}
 Account No: ${bank.accNo}
 Branch: ${bank.branch}
@@ -1201,7 +1276,8 @@ Reference: ${refCode}`;
       const coins = parseInt(localStorage.getItem("invitation_coins") || "0", 10);
 
       if (!name) throw new Error("Please provide your name in the previous step.");
-      if (guests < 1 || guests > 6) throw new Error("Guest count must be between 1 and 6.");
+      if (guests < 1 || guests > 6)
+        throw new Error("Guest count must be between 1 and 6.");
 
       await addDoc(collection(db, "rsvps"), {
         name,
@@ -1213,7 +1289,7 @@ Reference: ${refCode}`;
         coins,
         song,
         paymentMethod, // <- "eft" or "hotel_counter"
-        refCode,       // <- store the reference code for both methods
+        refCode, // <- store the reference code for both methods
         createdAt: serverTimestamp(),
       });
 
@@ -1263,7 +1339,9 @@ Reference: ${refCode}`;
             value={song}
             onChange={(e) => setSong(e.target.value)}
           />
-          <p className="text-xs text-slate-500 mt-2">We'll do our best to get it on the playlist!</p>
+          <p className="text-xs text-slate-500 mt-2">
+            We'll do our best to get it on the playlist!
+          </p>
         </Card>
 
         {/* Payment options side-by-side */}
@@ -1271,72 +1349,83 @@ Reference: ${refCode}`;
           <div className="text-sm space-y-10">
             {/* Pay at counter */}
             <div
-      className={`p-3 rounded-lg border ${
-        paymentMethod === "hotel_counter"
-          ? "border-emerald-400 bg-emerald-50/40"
-          : "border-slate-200"
-      }`}
-    >
-      <div className="font-medium">Pay at the hotel counter</div>
-      <p className="mt-1">
-        Please settle your accommodation at the <b>Houw Hoek Hotel</b> reception desk on arrival.
-      </p>
-      <p className="mt-1">
-        Quote your unique reference code so we can match your payment to your RSVP:
-      </p>
+              className={`p-3 rounded-lg border ${
+                paymentMethod === "hotel_counter"
+                  ? "border-emerald-400 bg-emerald-50/40"
+                  : "border-slate-200"
+              }`}
+            >
+              <div className="font-medium">Pay at the hotel counter</div>
+              <p className="mt-1">
+                Please settle your accommodation at the <b>Houw Hoek Hotel</b> reception desk on
+                arrival.
+              </p>
+              <p className="mt-1">
+                Quote your unique reference code so we can match your payment to your RSVP:
+              </p>
 
-      {/* NOTE the mb-8 here creates a clear gap before the EFT section */}
-      <div className="mt-2 mb-10 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 border text-base">
-        <span className="font-mono font-semibold tracking-wider">{refCode}</span>
-        <button
-          onClick={() => navigator.clipboard.writeText(refCode)}
-          className="px-2 py-1 rounded border bg-white"
-        >
-          Copy
-        </button>
-      </div>
-    </div>
+              {/* NOTE the mb-10 here creates a clear gap before the EFT section */}
+              <div className="mt-2 mb-10 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 border text-base">
+                <span className="font-mono font-semibold tracking-wider">{refCode}</span>
+                <button
+                  onClick={() => navigator.clipboard.writeText(refCode)}
+                  className="px-2 py-1 rounded border bg-white"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
 
             {/* EFT */}
             <div
-      className={`p-3 rounded-lg border ${
-        paymentMethod === "eft"
-          ? "border-amber-400 bg-amber-50/40"
-          : "border-slate-200"
-      }`}
-    >
-      <div className="font-medium">EFT (bank transfer)</div>
-      <div className="mt-1 space-y-1">
-        <div><b>Account:</b> {bank.accountName}</div>
-        <div><b>Bank:</b> {bank.bank}</div>
-        <div><b>Number:</b> {bank.accNo}</div>
-        <div><b>Branch:</b> {bank.branch}</div>
-        <div>
-          <b>Reference:</b> <span className="font-mono">{refCode}</span>{" "}
-          <span className="text-xs text-slate-500">(please use this)</span>
-        </div>
-      </div>
+              className={`p-3 rounded-lg border ${
+                paymentMethod === "eft"
+                  ? "border-amber-400 bg-amber-50/40"
+                  : "border-slate-200"
+              }`}
+            >
+              <div className="font-medium">EFT (bank transfer)</div>
+              <div className="mt-1 space-y-1">
+                <div>
+                  <b>Account:</b> {bank.accountName}
+                </div>
+                <div>
+                  <b>Bank:</b> {bank.bank}
+                </div>
+                <div>
+                  <b>Number:</b> {bank.accNo}
+                </div>
+                <div>
+                  <b>Branch:</b> {bank.branch}
+                </div>
+                <div>
+                  <b>Reference:</b> <span className="font-mono">{refCode}</span>{" "}
+                  <span className="text-xs text-slate-500">(please use this)</span>
+                </div>
+              </div>
 
-      <div className="mt-2 flex gap-2">
-        <button onClick={copyEftDetails} className="px-3 py-2 rounded-lg border">
-          {copied ? "Copied!" : "Copy EFT details"}
-        </button>
-        <input
-          type="email"
-          placeholder="or enter email for a payment link"
-          className="flex-1 px-3 py-2 rounded-lg border"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <button
-          className="px-3 py-2 rounded-lg bg-rose-600 text-white"
-          onClick={() => alert(`A payment link will be emailed to: ${email || "(no email)"}`)}
-        >
-          Send
-        </button>
-      </div>
-    </div>
-  </div>
+              <div className="mt-2 flex gap-2">
+                <button onClick={copyEftDetails} className="px-3 py-2 rounded-lg border">
+                  {copied ? "Copied!" : "Copy EFT details"}
+                </button>
+                <input
+                  type="email"
+                  placeholder="or enter email for a payment link"
+                  className="flex-1 px-3 py-2 rounded-lg border"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+                <button
+                  className="px-3 py-2 rounded-lg bg-rose-600 text-white"
+                  onClick={() =>
+                    alert(`A payment link will be emailed to: ${email || "(no email)"}`)
+                  }
+                >
+                  Send
+                </button>
+              </div>
+            </div>
+          </div>
         </Card>
       </div>
 
@@ -1376,6 +1465,3 @@ function Done() {
 }
 
 console.log("FB project:", import.meta.env.VITE_FB_PROJECT_ID);
-
-// InvitationApp is exported as the default above; the duplicate App() default export has been removed.
-
