@@ -446,8 +446,7 @@ function Details({ onNext, hosted = false }: { onNext: () => void; onOpenJackpot
         Please read the details below, then play two quick games to collect coins and reserve your seat.
       </p>
 
-// --- Inside the Details section rendering ---
-// Centered column
+      
 <div className="mt-8 max-w-2xl mx-auto space-y-8">
   <section>
     <h3 className="text-xl font-semibold">Weekend Happenings</h3>
