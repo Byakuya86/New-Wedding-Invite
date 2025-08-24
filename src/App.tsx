@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 
 const COIN_PER_GAME = 25;
 const SEAT_PRICE = 25;
+const [declined, setDeclined] = useState(false);
 
 
 function PageDimmer({ show, opacity = 0.25 }: { show: boolean; opacity?: number }) {
@@ -158,10 +159,14 @@ export default function InvitationApp() {
 
             {screen === "details" && (
               <Details
-                hosted={!!(guestProfile?.compedNights || guestProfile?.hostedStay)}
+                hosted={!!guestProfile?.hostedStay}
                 onNext={() => setScreen("game1")}
                 onOpenJackpot={() => setJackpotOpen(true)}
-              />
+                onDecline={() => {
+                  setDeclined(true);
+                  setScreen("done");          // send to final screen after decline
+              }}
+            />
             )}
             {screen === "game1" && (
               <PetalClickGame
@@ -204,7 +209,7 @@ export default function InvitationApp() {
               />
             )}
             {screen === "songAndPay" && <SongAndPayment onFinish={() => setScreen("done")} />}
-            {screen === "done" && <Done />}
+            {screen === "done" && <Done declined={declined} />}
           </div>
         </div>
       )}
@@ -438,7 +443,7 @@ function DoorFullScreen({ onEnter }: { onEnter: () => void }) {
   );
 }
 
-function Details({ onNext, hosted = false }: { onNext: () => void; onOpenJackpot?: () => void; hosted?: boolean }) {
+function Details({ onNext, onOpenJackpot, hosted = false, onDecline, }: { onNext: () => void; onOpenJackpot?: () => void; hosted?: boolean; onDecline?: () => void; }) {
   return (
     <div className="px-6 py-10 text-center">
       <h2 className="text-3xl font-bold">You're invited!</h2>
@@ -446,7 +451,7 @@ function Details({ onNext, hosted = false }: { onNext: () => void; onOpenJackpot
         Please read the details below, then play two quick games to collect coins and reserve your seat.
       </p>
 
-      
+
 <div className="mt-8 max-w-2xl mx-auto space-y-8">
   <section>
     <h3 className="text-xl font-semibold">Weekend Happenings</h3>
@@ -465,13 +470,13 @@ function Details({ onNext, hosted = false }: { onNext: () => void; onOpenJackpot
             {!hosted && (
               <>
                 <li><b>Payment Details:</b> Payment can be made via EFT or at the reception counter on the day; unfortunately no refunds.</li>
-                <li><b>Further details</b> will be provided at the end of the reservation.</li>
+                <li><b>Further detailswill be provided at the end of the reservation.</b></li>
               </>
             )}
             <li>
               <b>Check-In:</b> 3 pm <span className="mx-1">|</span> <b>Check-Out:</b> 11 am next day
             </li>
-            <li><b>Food &amp; Drinks:</b> Food provided and Open Bar</li>
+            <li><b>Food &amp; Drinks:</b> Food provided and Cash Bar</li>
             <li><b>Additional Activities:</b> Optional, at own cost</li>
           </ul>
         </section>
@@ -486,14 +491,15 @@ function Details({ onNext, hosted = false }: { onNext: () => void; onOpenJackpot
         </section>
       </div>
 
-      <div className="mt-10 flex justify-center">
-        <button
-          onClick={onNext}
-          className="px-6 py-2 rounded-xl bg-rose-600 text-white shadow hover:brightness-110"
-        >
-          Next → Play
-        </button>
-      </div>
+      <div className="mt-10 flex flex-col items-center gap-3">
+  <button
+    onClick={onNext}
+    className="px-6 py-2 rounded-xl bg-rose-600 text-white shadow hover:brightness-110"
+  >
+    Next → Play
+  </button>
+  <DeclineButton onDecline={onDecline} />
+</div>
     </div>
   );
 }
@@ -1452,13 +1458,60 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-function Done() {
+function Done({ declined = false }: { declined?: boolean }) {
   return (
     <div className="p-6 text-center">
-      <h2 className="text-2xl font-bold">All set — see you soon!</h2>
+      <h2 className="text-2xl font-bold">
+        {declined ? "Thanks for letting us know" : "All set — see you soon!"}
+      </h2>
       <p className="mt-3 text-slate-600">
-        Thank you for RSVPing — we’ve received your details and look forward to celebrating with you.
+        {declined
+          ? "We’re sorry you can’t make it, but we truly appreciate the RSVP."
+          : "Thank you for RSVPing — we’ve received your details and look forward to celebrating with you."}
       </p>
+    </div>
+  );
+}
+
+// small helper used by Details
+function DeclineButton({ onDecline }: { onDecline?: () => void }) {
+  const [saving, setSaving] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  async function handleDecline() {
+    const ok = confirm("Are you sure you want to decline the invitation?");
+    if (!ok) return;
+    try {
+      setSaving(true);
+      setErr(null);
+      const name = (localStorage.getItem("rsvp_name") || "").trim();
+      const email = (localStorage.getItem("rsvp_email") || "").trim();
+      const code = (localStorage.getItem("guest_code") || "").trim();
+      await addDoc(collection(db, "rsvps"), {
+        name,
+        email,
+        guestCode: code || null,
+        status: "declined",
+        createdAt: serverTimestamp(),
+      });
+      onDecline && onDecline();
+    } catch (e: any) {
+      setErr(e?.message || "Could not record decline. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="text-center">
+      <button
+        onClick={handleDecline}
+        disabled={saving}
+        className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+      >
+        {saving ? "Sending…" : "Can’t make it? Decline"}
+      </button>
+      {err && <div className="text-rose-600 text-xs mt-2">{err}</div>}
     </div>
   );
 }
