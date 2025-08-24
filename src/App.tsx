@@ -443,7 +443,7 @@ function DoorFullScreen({ onEnter }: { onEnter: () => void }) {
   );
 }
 
-function Details({ onNext, onOpenJackpot, hosted = false, onDecline, }: { onNext: () => void; onOpenJackpot?: () => void; hosted?: boolean; onDecline?: () => void; }) {
+function Details({ onNext, hosted = false, onDecline, }: { onNext: () => void; onOpenJackpot?: () => void; hosted?: boolean; onDecline?: () => void; }) {
   return (
     <div className="px-6 py-10 text-center">
       <h2 className="text-3xl font-bold">You're invited!</h2>
