@@ -2,52 +2,158 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper validators
+    // ---------- Email extension (/mail) ----------
+    match /mail/{docId} {
+      allow create: if
+        request.resource.data.keys().hasAll(['to','message']) &&
+        request.resource.data.to is list &&
+        request.resource.data.to.size() > 0 &&
+        request.resource.data.to[0] is string &&
+        request.resource.data.message is map &&
+        request.resource.data.message.subject is string &&
+        (
+          (request.resource.data.message.text is string) ||
+          (request.resource.data.message.html is string)
+        );
+      allow read, update, delete: if false;
+    }
+
+    // ---------- Helpers ----------
     function isShortString(v, max) {
       return v is string && v.size() > 0 && v.size() <= max;
     }
+
+    // Allow empty-string emails but cap length (used only if email is present)
     function isEmail(v) {
       return v is string && v.size() <= 200;
     }
 
-    // RSVP submissions (no auth required, but validated)
+    function hasKey(m, k) {
+      return m.keys().hasAny([k]);
+    }
+
+    function guestExists(c) {
+      return c is string &&
+             exists(/databases/$(database)/documents/guests/$(c));
+    }
+
+    // Hosted / comped guests (kept for reference; not used in payment check now)
+    function isHosted(c) {
+      return guestExists(c) &&
+        (
+          get(/databases/$(database)/documents/guests/$(c)).data.hostedStay == true
+          ||
+          (
+            get(/databases/$(database)/documents/guests/$(c)).data.compedNights is int &&
+            get(/databases/$(database)/documents/guests/$(c)).data.compedNights > 0
+          )
+        );
+    }
+
+    // Enforce one-per-code even if a different doc ID is attempted
+    function noExistingRsvpForCode(c) {
+      return !exists(/databases/$(database)/documents/rsvps/$(c));
+    }
+
+    // Require /rsvps/{id} to equal request.resource.data.guestCode
+    function idMatchesGuestCode() {
+      return hasKey(request.resource.data, 'guestCode') &&
+             request.resource.data.guestCode is string &&
+             request.resource.data.guestCode.size() > 0 &&
+             request.resource.id == request.resource.data.guestCode;
+    }
+
+    // ---------- RSVPs ----------
     match /rsvps/{rsvpId} {
-      allow create: if
-        // Only accept creates (no edits/deletes)
-        request.method == 'create' &&
 
-        // Accept until Dec 31, 2026 (adjust for your event)
-        request.time < timestamp.date(2026, 12, 31) &&
+      // Create-only writes before 2026-12-31
+      allow create: if request.time < timestamp.date(2025, 10, 31) + duration.value(1, 'd') && (
 
-        // Basic shape checks
-        isShortString(request.resource.data.name, 120) &&
-        isEmail(request.resource.data.email) &&
-        request.resource.data.phone is string &&
-        request.resource.data.dietary is string &&
-        request.resource.data.message is string &&
-        request.resource.data.song is string &&
+          // ---- Path 1: Full RSVP (attending) ----
+          (
+            !(request.resource.data.status == 'declined') &&
 
-        request.resource.data.guests is int &&
-        request.resource.data.guests >= 1 &&
-        request.resource.data.guests <= 6 &&
+            // must be tied to code, use code as doc id, and no prior RSVP exists
+            idMatchesGuestCode() &&
+            guestExists(request.resource.data.guestCode) &&
+            noExistingRsvpForCode(request.resource.data.guestCode) &&
 
-        request.resource.data.coins is int &&
-        request.resource.data.coins >= 0 &&
+            // required minimal fields
+            isShortString(request.resource.data.name, 120) &&
+            // email OPTIONAL (but if present, must be <=200 char string)
+            ( !hasKey(request.resource.data, 'email') || isEmail(request.resource.data.email) ) &&
 
-        request.resource.data.paymentMethod in ['hotel_counter','eft'] &&
-        isShortString(request.resource.data.refCode, 40);
+            // OPTIONAL fields: if present, must be strings
+            ( !hasKey(request.resource.data, 'phone')   || request.resource.data.phone   is string ) &&
+            ( !hasKey(request.resource.data, 'dietary') || request.resource.data.dietary is string ) &&
+            ( !hasKey(request.resource.data, 'message') || request.resource.data.message is string ) &&
+            ( !hasKey(request.resource.data, 'song')    || request.resource.data.song    is string ) &&
 
-      // Optional: let you read RSVPs from the console app only; otherwise keep false
-      allow read: if false;
+            // guests & coins (required)
+            request.resource.data.guests is int &&
+            request.resource.data.guests >= 1 &&
+            request.resource.data.guests <= 6 &&
+            request.resource.data.coins is int &&
+            request.resource.data.coins >= 0 &&
+
+            // payment method (simplified & robust)
+            request.resource.data.paymentMethod in ['none','hotel_counter','eft'] &&
+
+            // reference code (required)
+            isShortString(request.resource.data.refCode, 40)
+          )
+
+          ||
+
+          // ---- Path 2a: Decline WITH code (minimal) ----
+          (
+            request.resource.data.status == 'declined' &&
+            idMatchesGuestCode() &&
+            guestExists(request.resource.data.guestCode) &&
+            noExistingRsvpForCode(request.resource.data.guestCode) &&
+            request.resource.data.keys().hasOnly(
+              ['guestCode','status','createdAt','name','email']
+            ) &&
+            (
+              !hasKey(request.resource.data, 'name') ||
+              isShortString(request.resource.data.name, 120)
+            ) &&
+            (
+              !hasKey(request.resource.data, 'email') ||
+              isEmail(request.resource.data.email)
+            )
+          )
+
+          ||
+
+          // ---- Path 2b: Decline WITHOUT code (anonymous) ----
+          (
+            request.resource.data.status == 'declined' &&
+            request.resource.data.keys().hasOnly(
+              ['status','createdAt','name','email']
+            ) &&
+            (
+              !hasKey(request.resource.data, 'name') ||
+              isShortString(request.resource.data.name, 120)
+            ) &&
+            (
+              !hasKey(request.resource.data, 'email') ||
+              isEmail(request.resource.data.email)
+            )
+          )
+        );
+
+      // Auto-skip: allow single-doc GET (no list) so app can detect already-submitted code
+      allow get: if guestExists(rsvpId);
+      allow list: if false;
+
+      // No client updates/deletes
       allow update, delete: if false;
     }
 
-    // Guests lookup by code (if you’re prefilling)
+    // ---------- Guests lookup ----------
     match /guests/{code} {
-      // If these are public invite links, reads can be open:
       allow read: if true;
-
-      // No client-side writes to guest profiles
       allow create, update, delete: if false;
     }
   }
