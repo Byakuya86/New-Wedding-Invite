@@ -1055,7 +1055,7 @@ function JackpotModal({
 
     const stopId = setTimeout(() => {
       clearInterval(spinId);
-      setResult(["🎉", "🎉", "🎉"]);
+      setResult(["💍", "💍", "💍"]);
       setSpinning(false);
       spinningRef.current = false;
     }, SPIN_MS);
@@ -1504,7 +1504,7 @@ await sendAdminRsvpEmail(
 
       {/* Hosted: show banner and HIDE payment UI */}
       {hosted && (
-        <div className="mt-3 p-3 rounded-lg border border-emerald-300 bg-emerald-50/60 text-sm">
+        <div className="mt-3 p-3 rounded-lg border-emerald-300 bg-emerald-50/60 text-sm">
           <div className="font-medium">No payment needed for your invite 🎉</div>
           <p className="mt-2">Your accommodation is covered. Just bring yourself and your dancing shoes!</p>
           <p className="mt-2">Keep your reference code below when checking in at the Hotel.</p>
@@ -1519,7 +1519,7 @@ await sendAdminRsvpEmail(
 
       {/* Per-invite amount for NON-hosted guests */}
       {!hosted && typeof payAmountZar === "number" && (
-        <div className="mt-3 p-3 rounded-lg border border-amber-300 bg-amber-50/60 text-sm">
+        <div className="mt-3 p-3 rounded-lg border-amber-300 bg-amber-50/60 text-sm">
           <div className="font-medium">
             Amount due for your invite: R {payAmountZar.toLocaleString("en-ZA")}
           </div>
