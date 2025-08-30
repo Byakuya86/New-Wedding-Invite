@@ -492,7 +492,7 @@ function Details({
         <section>
           <h3 className="text-xl font-semibold">Weekend Happenings</h3>
           <ul className="mt-3 list-disc list-inside leading-7 space-y-1">
-            <li><b>Reception:</b> Saturday night at Houw Hoek</li>
+            <li><b>Reception:</b> Saturday night the 11th of April 2026 at Houw Hoek</li>
 {hosted ? (
   <li>
     <b>Hotel Booking:</b>{" "}
