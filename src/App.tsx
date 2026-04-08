@@ -27,9 +27,8 @@ export default function App() {
         <div style={styles.divider} />
 
         <p style={styles.intro}>
-          Your presence at our wedding is the greatest gift of all.
-          Should you wish to bless us with a gift, you may do so using the
-          details below.
+          Your presence at our wedding is the greatest gift of all. Should you
+          wish to bless us with a gift, you may do so using the details below.
         </p>
 
         <div style={styles.section}>
@@ -40,7 +39,9 @@ export default function App() {
 
           <button
             style={styles.button}
-            onClick={() => copyToClipboard(payshapNumber, "PayShap number copied")}
+            onClick={() =>
+              copyToClipboard(payshapNumber, "PayShap number copied")
+            }
           >
             Copy PayShap Number
           </button>
@@ -66,24 +67,15 @@ export default function App() {
 
           <button
             style={styles.button}
-            onClick={() => copyToClipboard(accountNumber, "Account number copied")}
+            onClick={() =>
+              copyToClipboard(accountNumber, "Account number copied")
+            }
           >
             Copy Account Number
           </button>
         </div>
 
         {copied && <p style={styles.copiedMessage}>{copied}</p>}
-
-        <div style={styles.qrSection}>
-          <div style={styles.qrFrame}>
-            <img
-              src="/gift-qr.png"
-              alt="QR code for wedding gift details"
-              style={styles.qrImage}
-            />
-          </div>
-          <p style={styles.qrText}>Scan to open this page</p>
-        </div>
       </div>
     </div>
   );
@@ -182,28 +174,5 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: "#6d5330",
     fontWeight: 600,
     fontSize: "15px",
-  },
-  qrSection: {
-    marginTop: "34px",
-    textAlign: "center",
-  },
-  qrFrame: {
-    display: "inline-block",
-    padding: "14px",
-    background: "#fff",
-    borderRadius: "18px",
-    border: "1px solid rgba(212, 180, 131, 0.4)",
-    boxShadow: "0 8px 24px rgba(0,0,0,0.06)",
-  },
-  qrImage: {
-    width: "180px",
-    height: "180px",
-    objectFit: "contain",
-    display: "block",
-  },
-  qrText: {
-    marginTop: "12px",
-    fontSize: "14px",
-    color: "#7a6b59",
   },
 };
